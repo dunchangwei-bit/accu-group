@@ -1188,13 +1188,18 @@ async function handleAuthChange(user){
     await syncFromFirebase();
     // Also sync MD pricing from Firebase
     try{
-      const mdSnap=await db.ref('aq_md').once('value');
-      const mdData=mdSnap.val();
-      if(mdData){MD=mdData;localStorage.setItem('aq_md',JSON.stringify(MD));}
-      else if(Object.keys(MD).length){await db.ref('aq_md').set(MD);}
-      const bendSnap=await db.ref('aq_bend').once('value');
-      const bendData=bendSnap.val();
-      if(bendData){BEND=bendData;localStorage.setItem('aq_bend',JSON.stringify(BEND));}
+      // MD stored as string to avoid Firebase dot-in-key restriction
+      const mdSnap=await db.ref('aq_md_str').once('value');
+      const mdStr=mdSnap.val();
+      if(mdStr){
+        const mdData=JSON.parse(mdStr);
+        MD=mdData;localStorage.setItem('aq_md',JSON.stringify(MD));
+      } else if(Object.keys(MD).length){
+        await db.ref('aq_md_str').set(JSON.stringify(MD));
+      }
+      const bendSnap=await db.ref('aq_bend_str').once('value');
+      const bendStr=bendSnap.val();
+      if(bendStr){BEND=JSON.parse(bendStr);localStorage.setItem('aq_bend',JSON.stringify(BEND));}
     }catch(e){console.warn('MD sync error:',e);}
     setupRealtimeListeners();
     registerCurrentUser();
@@ -1265,7 +1270,7 @@ function fbPush(key){
   const data=lzGet(key);if(data===null)return;
   _fbWriting=true;
   db.ref(key).set(data)
-    .then(()=>setTimeout(()=>{_fbWriting=false},800))
+    .then(()=>setTimeout(()=>{_fbWriting=false},2000))
     .catch(e=>{_fbWriting=false;console.error('FB push error:',e);});
 }
 
@@ -2621,8 +2626,8 @@ function savePricing(){
   localStorage.setItem('aq_bend',JSON.stringify(BEND));
   // Sync to Firebase so all users get updated pricing
   if(db&&currentUser){
-    db.ref('aq_md').set(MD).catch(e=>console.warn('MD push error:',e));
-    db.ref('aq_bend').set(BEND).catch(e=>console.warn('BEND push error:',e));
+    db.ref('aq_md_str').set(JSON.stringify(MD)).catch(e=>console.warn('MD push error:',e));
+    db.ref('aq_bend_str').set(JSON.stringify(BEND)).catch(e=>console.warn('BEND push error:',e));
   }
   const b=document.getElementById('saved-badge');b.classList.add('on');setTimeout(()=>b.classList.remove('on'),2500);
 }
@@ -4711,9 +4716,10 @@ function approveToProduction(ono){
   const orders=loadOrders();
   const o=orders.find(o=>o.ono===ono);if(!o)return;
   o.status='cutting';
-  // Mark all parts as pending (ready to start cutting)
   o.parts.forEach(p=>{if(p.jobStatus!=='done'&&p.jobStatus!=='packing')p.jobStatus='pending'});
-  saveOrders(orders);renderOrders();renderProduction();
+  saveOrders(orders);
+  // Small delay then re-render to ensure Firebase push completes first
+  setTimeout(()=>{renderOrders();renderProduction();},300);
   const t=document.createElement('div');
   t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--org);color:#000;padding:11px 24px;border-radius:9px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.4)';
   t.textContent=`⚡ ${ono} 已批准生产 — 进入 Active`;
