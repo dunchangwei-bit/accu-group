@@ -1186,6 +1186,16 @@ async function handleAuthChange(user){
 
     applyRoleTabs();
     await syncFromFirebase();
+    // Also sync MD pricing from Firebase
+    try{
+      const mdSnap=await db.ref('aq_md').once('value');
+      const mdData=mdSnap.val();
+      if(mdData){MD=mdData;localStorage.setItem('aq_md',JSON.stringify(MD));}
+      else if(Object.keys(MD).length){await db.ref('aq_md').set(MD);}
+      const bendSnap=await db.ref('aq_bend').once('value');
+      const bendData=bendSnap.val();
+      if(bendData){BEND=bendData;localStorage.setItem('aq_bend',JSON.stringify(BEND));}
+    }catch(e){console.warn('MD sync error:',e);}
     setupRealtimeListeners();
     registerCurrentUser();
     initApp();
@@ -2609,6 +2619,11 @@ function buildBendTable(){
 function savePricing(){
   localStorage.setItem('aq_md',JSON.stringify(MD));
   localStorage.setItem('aq_bend',JSON.stringify(BEND));
+  // Sync to Firebase so all users get updated pricing
+  if(db&&currentUser){
+    db.ref('aq_md').set(MD).catch(e=>console.warn('MD push error:',e));
+    db.ref('aq_bend').set(BEND).catch(e=>console.warn('BEND push error:',e));
+  }
   const b=document.getElementById('saved-badge');b.classList.add('on');setTimeout(()=>b.classList.remove('on'),2500);
 }
 
